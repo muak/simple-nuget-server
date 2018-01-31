@@ -16,18 +16,37 @@ foreach ($_FILES as $value)
 
 // Try to find NuSpec file
 $package_zip = new ZipArchive();
-$package_zip->open($upload_filename);
-$nuspec_index = false;
-for ($i = 0; $i < $package_zip->numFiles; $i++) {
-	if (substr($package_zip->getNameIndex($i), -7) === '.nuspec') {
-		$nuspec_index = $i;
-		break;
+if($package_zip->open($upload_filename)===true){
+	$nuspec_index = false;
+	for ($i = 0; $i < $package_zip->numFiles; $i++) {
+		if (substr($package_zip->getNameIndex($i), -7) === '.nuspec') {
+			$nuspec_index = $i;
+			break;
+		}
 	}
+	if ($nuspec_index === false) {
+		api_error('400', 'NuSpec file not found in package');
+	}
+	$nuspec_string = $package_zip->getFromIndex($nuspec_index);
 }
-if ($nuspec_index === false) {
-	api_error('400', 'NuSpec file not found in package');
+else{
+	//For some reason, a nupkg made by recent nuget.exe cannot be sometimes opened by ZipArchive.
+	$zipdir_path = '/tmp/unzip';
+	
+	shell_exec("unzip $upload_filename *.nuspec -d $zipdir_path");
+	
+	$files = glob($zipdir_path.'/*.nuspec');
+	if(empty($files)){
+		shell_exec("rm -rf $zipdir_path");
+		api_error('400', 'NuSpec file not found in package');
+	}
+	
+	$nuspec_path = $files[0];
+	$nuspec_string = file_get_contents($nuspec_path);
+
+	shell_exec("rm -rf $zipdir_path");
 }
-$nuspec_string = $package_zip->getFromIndex($nuspec_index);
+
 $nuspec = simplexml_load_string($nuspec_string);
 
 if (!$nuspec->metadata->id || !$nuspec->metadata->version) {
